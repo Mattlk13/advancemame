@@ -260,6 +260,9 @@ static adv_error sdl_init(int device_id, adv_output output, unsigned overlay_siz
 
 	log_std(("video:sdl: sdl_init(id:%d,output:%d,overlay_size:%d)\n", device_id, (unsigned)output, overlay_size));
 
+	memset(&sdl_state, 0, sizeof(sdl_state));
+	initialized_now = 0;
+
 	if (sizeof(sdl_video_mode) > MODE_DRIVER_MODE_SIZE_MAX) {
 		error_set("Invalid structure size.\n");
 		goto err;
@@ -267,7 +270,7 @@ static adv_error sdl_init(int device_id, adv_output output, unsigned overlay_siz
 
 	if (!os_internal_sdl_get()) {
 		error_set("Unsupported without the SDL library.\n");
-		return -1;
+		goto err;
 	}
 
 #if defined(USE_VIDEO_SVGALIB)
@@ -284,7 +287,12 @@ static adv_error sdl_init(int device_id, adv_output output, unsigned overlay_siz
 	}
 #endif
 
-	memset(&sdl_state, 0, sizeof(sdl_state));
+#ifdef USE_VC
+	if (!target_wm()) {
+		error_set("With VideoCore you can use SDL only from a Window Manager.\n");
+		goto err;
+	}
+#endif
 
 	sdl_state.cursor = cursor;
 
@@ -293,8 +301,6 @@ static adv_error sdl_init(int device_id, adv_output output, unsigned overlay_siz
 		++i;
 	if (!i->name)
 		goto err;
-
-	initialized_now = 0;
 
 	if (SDL_WasInit(SDL_INIT_VIDEO) == 0) {
 		log_std(("video:sdl: call SDL_InitSubSystem(SDL_INIT_VIDEO)\n"));
