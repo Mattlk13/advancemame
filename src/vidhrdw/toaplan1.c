@@ -94,7 +94,7 @@ Abnormalities:
 #include "driver.h"
 #include "toaplan1.h"
 #include "cpu/m68000/m68000.h"
-#include "sound/samples.h"
+
 
 #define TOAPLAN1_TILEVRAM_SIZE       0x4000	/* each tile layer ram (word size) */
 #define TOAPLAN1_SPRITERAM_SIZE      0x800	/* sprite ram (word size) */
@@ -139,7 +139,6 @@ static int tiles_offsety;
 
 static int toaplan1_reset;		/* Hack! See toaplan1_bcu_control below */
 
-static int toaplan_wait;
 
 typedef struct
 {
@@ -157,7 +156,7 @@ tile_struct *temp_list;
 static int max_list_size[32];
 static int tile_count[32];
 
-	mame_bitmap *tmpbitmap1;
+    mame_bitmap *tmpbitmap1;
 static	mame_bitmap *tmpbitmap2;
 static	mame_bitmap *tmpbitmap3;
 
@@ -169,11 +168,6 @@ int	toaplan_dbg_sprite_only = 0;
 int	toaplan_dbg_priority = 0;
 int	toaplan_dbg_layer[4] = {1,1,1,1};
 #endif
-
-UINT8 toaplan1_hellfire_b1_pre;
-UINT8 toaplan1_hellfire_b1_buff;
-UINT8 toaplan1_hellfire_b2_pre;
-UINT8 toaplan1_hellfire_b2_buff;
 
 static int toaplan1_tile_buffers_alloc(void)
 {
@@ -614,15 +608,6 @@ static void toaplan1_find_tiles( void )
 	}
 }
 
-static UINT16 tag_to_word_r(const char *tag)
-{
-	if(port_tag_to_index(tag) != -1)
-	{
-		return port_tag_to_handler16(tag)(0,0);
-	}else{
-		return 0;	
-	}
-}
 
 static void toaplan1_find_sprites (void)
 {
@@ -633,13 +618,8 @@ static void toaplan1_find_sprites (void)
 
 	tile_count[16] = 0;
 
-	if(tag_to_word_r("EXTR") & 0x1){
-		s_size = toaplan1_buffered_spritesizeram16;	/* sprite block size */
-		s_info = buffered_spriteram16;				/* start of sprite ram */
-	}else{
-		s_size = toaplan1_spritesizeram16;
-		s_info = spriteram16;			
-	}
+	s_size = toaplan1_buffered_spritesizeram16;	/* sprite block size */
+	s_info = buffered_spriteram16;				/* start of sprite ram */
 
 	for ( sprite = 0; sprite < 256; sprite++ )
 	{
@@ -1534,88 +1514,13 @@ static void toaplan1_sprite_render (mame_bitmap *bitmap)
 
 }
 
-static int vcounter1 = 0;
-static float vsample_vol1 = 0;
 
-static void ese_fadeout(void)
-{
-	if (vfadeout_stop == 1)
-	{
-		vplaying2 = 0xff;
-		vfadeout_ready = 0;
-		vfadeout_stop = 0;
-		vsample_vol1 = 1.00;
-		sample_set_volume (0, 1.00);
-	}
-	
-	if (vcounter1 >= 17)
-	{
-		vcounter1 = 0;
-		if (vfadeout_ready == 1)
-		{
-			vsample_vol1 = vsample_vol1 - 0.10;
-			if (vsample_vol1 <= 0)
-			{
-				vsample_vol1 = 0;
-			}
-			sample_set_volume (0, vsample_vol1);
-		}
-		if (vsample_vol1 == 0)
-		{
-			sample_stop (0);
-			vfadeout_ready = 0;
-			vfadeout_stop = 0;
-			vsample_vol1 = 1.00;
-			sample_set_volume (0, 1.00);
-			if (vplaying2 != 0xff)
-			{
-			sample_start (0, vplaying2 , 1);
-			vplaying1 = 0xff;
-			vplaying2 = 0xff;
-			}
-		}
-	}
-	vcounter1++;	
-}
-
-static void ese_fadeout2(void)
-{
-	if (vfadeout_stop == 1)
-	{
-		vplaying2 = 0xff;
-		vfadeout_ready = 0;
-		vfadeout_stop = 0;
-		vsample_vol1 = 1.00;
-		sample_set_volume (0, 1.00);
-	}
-	
-	if (vcounter1 >= 10)
-	{
-		vcounter1 = 0;
-		if (vfadeout_ready == 1)
-		{
-			vsample_vol1 = vsample_vol1 - 0.10;
-			if (vsample_vol1 <= 0)
-			{
-				vsample_vol1 = 0;
-			}
-			sample_set_volume (0, vsample_vol1);
-		}
-		if (vsample_vol1 == 0)
-		{
-			sample_stop (0);
-			vfadeout_ready = 0;
-			vfadeout_stop = 0;
-			vsample_vol1 = 1.00;
-			sample_set_volume (0, 1.00);
-		}
-	}
-	vcounter1++;	
-}
 
 
 VIDEO_UPDATE( toaplan1 )
 {
+	memcpy(buffered_spriteram16, spriteram16, TOAPLAN1_SPRITERAM_SIZE);	//ghetto fix 4x
+	memcpy(toaplan1_buffered_spritesizeram16, toaplan1_spritesizeram16, TOAPLAN1_SPRITESIZERAM_SIZE);
 	/* discover what data will be drawn */
 	toaplan1_find_sprites();
 	toaplan1_find_tiles();
@@ -1624,41 +1529,11 @@ VIDEO_UPDATE( toaplan1 )
 	toaplan1_sprite_render(bitmap);
 }
 
-VIDEO_UPDATE( samesame )
-{
-	/* discover what data will be drawn */
-	toaplan1_find_sprites();
-	toaplan1_find_tiles();
-
-	toaplan1_render(bitmap);
-	toaplan1_sprite_render(bitmap);
-	if (start>0) toaplan_wait++;
-	if (toaplan_wait>=(116+start2))
-	{
-		sample_stop (0);
-		sample_set_volume (0, 1.00);
-		sample_start (0, 0x7, 0);
-		start=0;
-		start2=1;
-		toaplan_wait=0;
-	}
-	if (start2 == 0) ese_fadeout2();
-}
-
-VIDEO_UPDATE( vimana )
-{
-	/* discover what data will be drawn */
-	toaplan1_find_sprites();
-	toaplan1_find_tiles();
-
-	toaplan1_render(bitmap);
-	toaplan1_sprite_render(bitmap);
-
-	ese_fadeout();
-}
 
 VIDEO_UPDATE( zerowing )
 {
+	memcpy(buffered_spriteram16, spriteram16, TOAPLAN1_SPRITERAM_SIZE);
+	memcpy(toaplan1_buffered_spritesizeram16, toaplan1_spritesizeram16, TOAPLAN1_SPRITESIZERAM_SIZE);
 	/* discover what data will be drawn */
 	toaplan1_find_sprites();
 	toaplan1_find_tiles();
@@ -1667,8 +1542,11 @@ VIDEO_UPDATE( zerowing )
 	toaplan1_sprite_render(bitmap);
 }
 
+
 VIDEO_UPDATE( demonwld )
 {
+	memcpy(buffered_spriteram16, spriteram16, TOAPLAN1_SPRITERAM_SIZE);
+	memcpy(toaplan1_buffered_spritesizeram16, toaplan1_spritesizeram16, TOAPLAN1_SPRITESIZERAM_SIZE);
 	/* discover what data will be drawn */
 	toaplan1_find_sprites();
 	toaplan1_find_tiles();
@@ -1677,26 +1555,15 @@ VIDEO_UPDATE( demonwld )
 	toaplan1_sprite_render(bitmap);
 }
 
+
 VIDEO_UPDATE( rallybik )
 {
+	buffer_spriteram16_w(0, 0, 0);
 	/* discover what data will be drawn */
 	toaplan1_find_tiles();
 	rallybik_find_sprites();
 
 	rallybik_render(bitmap);
-}
-
-VIDEO_UPDATE( hellfire )
-{
-	/* discover what data will be drawn */
-	toaplan1_find_sprites();
-	toaplan1_find_tiles();
-
-	toaplan1_render(bitmap);
-	toaplan1_sprite_render(bitmap);
-
-	toaplan1_hellfire_b1_pre = toaplan1_hellfire_b1_buff;
-	toaplan1_hellfire_b2_pre = toaplan1_hellfire_b2_buff;
 }
 
 /****************************************************************************
@@ -1705,16 +1572,19 @@ VIDEO_UPDATE( hellfire )
     assume it happens automatically every frame, at the end of vblank
 ****************************************************************************/
 
+
 VIDEO_EOF( toaplan1 )
 {
 	memcpy(buffered_spriteram16, spriteram16, TOAPLAN1_SPRITERAM_SIZE);
 	memcpy(toaplan1_buffered_spritesizeram16, toaplan1_spritesizeram16, TOAPLAN1_SPRITESIZERAM_SIZE);
 }
 
+
 VIDEO_EOF( rallybik )
 {
 	buffer_spriteram16_w(0, 0, 0);
 }
+
 
 VIDEO_EOF( samesame )
 {
@@ -1722,3 +1592,4 @@ VIDEO_EOF( samesame )
 	memcpy(toaplan1_buffered_spritesizeram16, toaplan1_spritesizeram16, TOAPLAN1_SPRITESIZERAM_SIZE);
 	cpunum_set_input_line(0, MC68000_IRQ_2, HOLD_LINE);	/* Frame done */
 }
+

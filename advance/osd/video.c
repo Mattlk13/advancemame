@@ -44,6 +44,10 @@
 #include <pthread.h>
 #endif
 
+#ifndef __MSDOS__
+#include "dvg.h"
+#endif
+
 /***************************************************************************/
 /* Commands */
 
@@ -1533,6 +1537,10 @@ adv_error advance_video_init(struct advance_video_context* context, adv_conf* cf
 	conf_float_register_limit_default(cfg_context, "display_expand", 1.0, 10.0, 1.25);
 	conf_string_register_default(cfg_context, "display_aspect", "auto");
 
+	conf_string_register_default(cfg_context, "vector_aux_renderer", "none");
+	conf_bool_register_default(cfg_context,   "vector_aux_renderer_dual_display", 1);
+	conf_string_register_default(cfg_context, "vector_aux_renderer_port", "/dev/ttyACM0");
+
 #ifdef USE_SMP
 	/* SMP always enabled by default */
 	conf_bool_register_default(cfg_context, "misc_smp", 1);
@@ -1711,7 +1719,7 @@ adv_error advance_video_config_load(struct advance_video_context* context, adv_c
 	const char* s;
 	adv_error err;
 	int i;
-	adv_bool ror, rol, flipx, flipy;
+	adv_bool ror, rol, flipx, flipy, vector_dual_display;
 	double d;
 
 	context->config.debug_flag = option->debug_flag;
@@ -1737,6 +1745,15 @@ adv_error advance_video_config_load(struct advance_video_context* context, adv_c
 	context->config.magnify_factor = conf_int_get_default(cfg_context, "display_magnify");
 	context->config.magnify_size = conf_int_get_default(cfg_context, "display_magnifysize");
 	context->config.adjust = conf_int_get_default(cfg_context, "display_adjust");
+
+#ifndef __MSDOS__
+        s = conf_string_get_default(cfg_context, "vector_aux_renderer");
+	if (strcmp(s, "dvg") == 0) {
+		vector_dual_display = conf_bool_get_default(cfg_context, "vector_aux_renderer_dual_display");
+		s = conf_string_get_default(cfg_context, "vector_aux_renderer_port");
+		dvg_init(s, vector_dual_display);
+	}
+#endif
 
 	context->config.monitor_aspect_x = 0;
 	context->config.monitor_aspect_y = 0;

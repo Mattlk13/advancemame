@@ -40,6 +40,10 @@
 
 #include <math.h>
 
+#ifndef __MSDOS__
+#include "dvg.h"
+#endif
+
 #if HAVE_SYS_MMAN_H
 #include <sys/mman.h> /* for mprotect */
 #endif
@@ -2129,6 +2133,9 @@ int osd_init(void)
 	add_pause_callback(osd2_video_pause);
 	add_pause_callback(osd2_sound_pause);
 	add_exit_callback(osd2_exit);
+#ifndef __MSDOS__
+	dvg_open();
+#endif
 
 	return 0;
 }
@@ -2243,6 +2250,9 @@ int osd_create_display(const osd_create_params *params, UINT32 *rgb_components)
 void osd_close_display(void)
 {
 	log_std(("osd: osd_close_display()\n"));
+#ifndef __MSDOS__
+	dvg_close();
+#endif
 
 	if (GLUE.video_flag)
 		osd2_video_done();
