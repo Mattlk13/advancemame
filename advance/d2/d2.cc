@@ -139,6 +139,56 @@ size_t utf8len(const std::string& str)
 	return count;
 }
 
+string highlight_backtick_substr(const string& s)
+{
+	string result;
+	result.reserve(s.size() + 32);
+
+	size_t i = 0;
+	size_t len = s.length();
+	int backtick_count = 0;
+
+	while (i < len) {
+		if (s[i] == '`') {
+			backtick_count++;
+
+			// Look for the closing backtick
+			std::size_t end = i + 1;
+			while (end < len && s[end] != '`') {
+				++end;
+			}
+
+			if (end < len) {
+				// Found matching backtick → wrap content with <b>...</b>
+				backtick_count++;  // count the closing one too
+
+				// Add content between the two backticks
+				result += "<b>";
+				result.append(s, i + 1, end - i - 1);
+				result += "</b>";
+
+				i = end + 1;  // skip past the closing `
+			} else {
+				// No closing backtick → just copy the rest as-is
+				result.append(s, i, len - i);
+				i = len;
+			}
+		} else {
+			// Normal character → copy
+			result += s[i];
+			++i;
+		}
+	}
+
+	// Warning about odd number of backticks
+	if (backtick_count % 2 != 0) {
+		cerr << "Warning: odd number of backticks (" << backtick_count << ") in input string - possible unclosed markup\n";
+		cerr << "At line: " << s << "\n";
+	}
+
+	return result;
+}
+
 //---------------------------------------------------------------------------
 // convert
 
@@ -1019,6 +1069,10 @@ string convert_html::link(string s)
 	size_t i = s.find("http://");
 
 	if (i == string::npos) {
+		i = s.find("https://");
+	}
+
+	if (i == string::npos) {
 		i = s.find("ftp://");
 	}
 
@@ -1332,6 +1386,321 @@ bool convert_frame::section_is_active(const string& s)
 }
 
 //---------------------------------------------------------------------------
+// convert_xml
+
+class convert_xml : public convert_html {
+	unsigned nest;
+
+	void adjust_level(unsigned level);
+	string mask(string s);
+public:
+	convert_xml(istream& Ais, ostream& Aos) : convert_html(Ais, Aos) { };
+
+	virtual void header(const string& a, const string& b);
+	virtual void footer();
+
+	virtual void sep();
+	virtual void line();
+
+	virtual void index_begin();
+	virtual void index_end();
+	virtual void index_text(unsigned level, unsigned index0, unsigned index1, unsigned index2, const string& s);
+	virtual bool section_is_active(const string& s);
+
+	virtual void section_begin(unsigned level);
+	virtual void section_end();
+	virtual void section_text(const string& s);
+
+	virtual void para_begin(unsigned level);
+	virtual void para_end();
+	virtual void para_text(const string& s);
+
+	virtual void pre_begin(unsigned level);
+	virtual void pre_end();
+	virtual void pre_text(const string& s);
+	virtual void pre_inner();
+
+	virtual void dot_begin(unsigned level);
+	virtual void dot_end();
+	virtual void dot_start(const string& s);
+	virtual void dot_stop();
+	virtual void dot_text(const string& s);
+
+	virtual void option_begin();
+	virtual void option_end();
+	virtual void option_start(const string& s);
+	virtual void option_stop();
+	virtual void option_text(const string& s);
+
+	virtual void tag_begin(unsigned level);
+	virtual void tag_end();
+	virtual void tag_start(const string& a, const string& b);
+	virtual void tag_stop();
+	virtual void tag_text(const string& s);
+};
+
+void convert_xml::index_begin()
+{
+}
+
+void convert_xml::index_end()
+{
+}
+
+void convert_xml::index_text(unsigned level, unsigned index0, unsigned index1, unsigned index2, const string& s)
+{
+}
+
+void convert_xml::header(const string& a, const string& b)
+{
+	nest = 0;
+}
+
+string convert_xml::mask(string s)
+{
+	s = convert_html::mask(s);
+
+	return highlight_backtick_substr(s);
+}
+
+void convert_xml::footer()
+{
+	if (nest & 4) {
+		os << "</div>\n";
+		nest &= ~4;
+	}
+	if (nest & 2) {
+		os << "</div>\n";
+		nest &= ~2;
+	}
+	if (nest & 1) {
+		os << "</div>\n";
+		nest &= ~1;
+	}
+}
+
+bool convert_xml::section_is_active(const string& s)
+{
+	if (s == "Copyright")
+		return false;
+	if (s == "See Also")
+		return false;
+	return true;
+}
+
+void convert_xml::adjust_level(unsigned level)
+{
+	switch (level) {
+	case 0 :
+		if (nest & 4) {
+			os << "</div>\n";
+			nest &= ~4;
+		}
+		if (nest & 2) {
+			os << "</div>\n";
+			nest &= ~2;
+		}
+		if (nest & 1) {
+			os << "</div>\n";
+			nest &= ~1;
+		}
+		nest |= 1; /* we are going to open it */
+		break;
+	case 1 :
+		if (nest & 4) {
+			os << "</div>\n";
+			nest &= ~4;
+		}
+		if (nest & 2) {
+			os << "</div>\n";
+			nest &= ~2;
+		}
+		nest |= 2;  /* we are going to open it */
+		break;
+	case 2 : 
+		if (nest & 4) {
+			os << "</div>\n";
+			nest &= ~4;
+		}
+		nest |= 4;  /* we are going to open it */
+		break;
+	}
+}
+
+void convert_xml::section_begin(unsigned level)
+{
+	adjust_level(level);
+
+	os << "<div class=\"manual-section-level-" << level + 1 << "\">\n";
+
+	if (level == 0) {
+		os << "<h1 id=\"sec" << level0 << "\" class=\"manual-title-level-" << level + 1 << "\">\n";
+	} else if (level == 1) {
+		if (level0) {
+			os << "<h2 id=\"sec" << level0 << "-" << level1 << "\" class=\"manual-title-level-" << level + 1 << "\">\n";
+		} else {
+			os << "<h2 class=\"manual-title-level-" << level + 1 << "\">\n";
+		}
+	} else {
+		if (level0 && level1) {
+			os << "<h3 id=\"sec" << level0 << "-" << level1 << "-" << level2 << "\" class=\"manual-title-level-" << level + 1 << "\">\n";
+		} else {
+			os << "<h3 class=\"manual-title-level-" << level + 1 << "\">\n";
+		}
+	}
+}
+
+void convert_xml::section_end()
+{
+	if (state == state_section0)
+		os << "</h1>" << endl;
+	else if (state == state_section1)
+		os << "</h2>" << endl;
+	else
+		os << "</h3>" << endl;
+	state = state_filled;
+}
+
+void convert_xml::section_text(const string& s)
+{
+	os << link(mask(s)) << endl;
+}
+
+void convert_xml::para_begin(unsigned level)
+{
+	os << "<p>";
+}
+
+void convert_xml::para_end()
+{
+	os << "</p>";
+	state = state_filled;
+}
+
+void convert_xml::para_text(const string& s)
+{
+	os << link(mask(s)) << endl;
+}
+
+void convert_xml::pre_begin(unsigned level)
+{
+	os << "<pre>" << endl;
+}
+
+void convert_xml::pre_end()
+{
+	os << "</pre>" << endl;
+	state = state_filled;
+}
+
+void convert_xml::pre_text(const string& s)
+{
+	os << link(mask(s));
+	os << "\n";
+}
+
+void convert_xml::pre_inner(void)
+{
+}
+
+void convert_xml::sep()
+{
+}
+
+void convert_xml::line()
+{
+	os << "<br>" << endl;
+}
+
+void convert_xml::dot_begin(unsigned level)
+{
+	os << "<ul>" << endl;
+}
+
+void convert_xml::dot_end()
+{
+	os << "</ul>" << endl;
+	state = state_filled;
+}
+
+void convert_xml::dot_start(const string& s)
+{
+	os << "<li>" << endl;
+	os << mask(s) << endl;
+}
+
+void convert_xml::dot_stop()
+{
+	os << "</li>" << endl;
+}
+
+void convert_xml::dot_text(const string& s)
+{
+	os << link(mask(s)) << endl;
+}
+
+void convert_xml::option_begin()
+{
+	os << "<div class=\"manual-option-list\">\n";
+}
+
+void convert_xml::option_end()
+{
+	os << "</div>\n";
+	state = state_filled;
+}
+
+void convert_xml::option_start(const string& s)
+{
+	os << "<div class=\"manual-option-entry\">\n";	
+	os << "<div class=\"manual-option-name\">\n";
+	os << mask(s) << endl;
+	os << "</div><div class=\"manual-option-description\">\n";
+}
+
+void convert_xml::option_stop()
+{
+	os << "</div>\n";
+	os << "</div>\n";
+}
+
+void convert_xml::option_text(const string& s)
+{
+	os << link(mask(s)) << endl;
+}
+
+void convert_xml::tag_begin(unsigned level)
+{
+	os << "<div class=\"manual-tag-list\">\n";
+}
+
+void convert_xml::tag_end()
+{
+	os << "</div>\n";
+	state = state_separator;
+}
+
+void convert_xml::tag_start(const string& a, const string& b)
+{
+	os << "<div class=\"manual-tag-entry\">\n";
+	os << "<div class=\"manual-tag-name\">\n";
+	os << mask(a) << endl;
+	os << "</div><div class=\"manual-tag-description\">\n";
+	os << mask(b) << endl;
+}
+
+void convert_xml::tag_stop()
+{
+	os << "</div>\n";
+	os << "</div>\n";
+}
+
+void convert_xml::tag_text(const string& s)
+{
+	os << link(mask(s)) << endl;
+}
+
+//---------------------------------------------------------------------------
 // convert_txt
 
 class convert_txt : public convert {
@@ -1616,7 +1985,7 @@ int main(int argc, char* argv[])
 	ostream* out = &cout;
 
 	if (argc != 2 && argc != 3 && argc != 4) {
-		cerr << "Syntax: d2 man | html | frame | txt" << endl;
+		cerr << "Syntax: d2 man | html | frame | xml | txt" << endl;
 		exit(EXIT_FAILURE);
 	}
 
@@ -1645,6 +2014,8 @@ int main(int argc, char* argv[])
 		c = new convert_html(*inp, *out);
 	else if (arg == "frame")
 		c = new convert_frame(*inp, *out);
+	else if (arg == "xml")
+		c = new convert_xml(*inp, *out);
 	else if (arg == "man")
 		c = new convert_man(*inp, *out);
 	else if (arg == "txt")
